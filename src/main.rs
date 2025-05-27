@@ -109,7 +109,6 @@ fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
     println!("{:?}", params);
     let mut path = url.path_segments().unwrap();
     match path.next() {
-        Some("hello") => Ok(HttpOkay::Text("Hello, Martin!".to_owned())),
         Some("static") => static_file(path, params),
         Some("image.png") => image(path, params),
         _ => Err(HttpError::NotFound),
@@ -120,10 +119,12 @@ fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
 // ----------------------------------------------------------------------------
 
 const STYLESHEET: &[u8] = include_bytes!("stylesheet.css");
+const QUESTION: &[u8] = include_bytes!("question.html");
 
 fn static_file(mut path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
     match path.next() {
         Some("stylesheet.css") => Ok(HttpOkay::Static(STYLESHEET, "text/css")),
+        Some("question.html") => Ok(HttpOkay::Static(QUESTION, "text/html")),
         _ => Err(HttpError::Invalid),
     }
 }
