@@ -1,7 +1,6 @@
 use std::collections::{HashMap};
 use std::error::{Error};
 use std::fs::{File};
-use std::path::{Path};
 use std::str::{Split};
 
 use tiny_http::{Method, Request, Response, Header};
@@ -15,6 +14,7 @@ pub enum HttpOkay {
     File(File),
     Text(String),
     Data(Vec<u8>),
+    Static(&'static [u8], &'static str),
 }
 
 // An erroneous HTTP response.
@@ -72,6 +72,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let header = header("Content-Type", "image/png");
                 request.respond(Response::from_data(data).with_header(header))
             },
+            Ok(HttpOkay::Static(data, content_type)) => {
+                let header = header("Content-Type", content_type);
+                request.respond(Response::from_data(data).with_header(header))
+            },
             Err(HttpError::Invalid) => {
                 request.respond(Response::from_string("Invalid request").with_status_code(400))
             },
@@ -115,13 +119,13 @@ fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
 
 // ----------------------------------------------------------------------------
 
+const STYLESHEET: &[u8] = include_bytes!("stylesheet.css");
+
 fn static_file(mut path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-    if let Some(name) = path.next() {
-        if name != ".." {
-            return Ok(HttpOkay::File(File::open(&Path::new(name))?));
-        }
+    match path.next() {
+        Some("stylesheet.css") => Ok(HttpOkay::Static(STYLESHEET, "text/css")),
+        _ => Err(HttpError::Invalid),
     }
-    Err(HttpError::Invalid)
 }
 
 // ----------------------------------------------------------------------------
