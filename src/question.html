@@ -9,8 +9,22 @@
             <p class="instruction">Click on the image where the text is most easily visible.</p>
             <div class="question">
                 <div class="images">
-                    <img src="/image.png?r1=100&g1=100&b1=100&r2=120&g2=120&b2=120"/>
-                    <img src="/image.png?r1=200&g1=200&b1=200&r2=220&g2=220&b2=220"/>
+                    <form action="/submit">
+                        <input type="hidden" name="which" value="1">
+                        <input type="hidden" name="win1" value="100,100,100"/>
+                        <input type="hidden" name="win2" value="120,120,120"/>
+                        <input type="hidden" name="lose1" value="200,200,200"/>
+                        <input type="hidden" name="lose2" value="220,220,220"/>
+                        <input type="image" src="/image.png?r1=100&g1=100&b1=100&r2=120&g2=120&b2=120"/>
+                    </form>
+                    <form action="/submit">
+                        <input type="hidden" name="which" value="2">
+                        <input type="hidden" name="win1" value="200,200,200"/>
+                        <input type="hidden" name="win2" value="220,220,220"/>
+                        <input type="hidden" name="lose1" value="100,100,100"/>
+                        <input type="hidden" name="lose2" value="120,120,120"/>
+                        <input type="image" src="/image.png?r1=200&g1=200&b1=200&r2=220&g2=220&b2=220"/>
+                    </form>
                 </div>
             </div>
         </div>

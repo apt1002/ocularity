@@ -116,6 +116,7 @@ fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
     match path.next() {
         Some("static") => static_file(path, params),
         Some("question") => question(path, params),
+        Some("submit") => submit(path, params),
         Some("image.png") => image(path, params),
         _ => Err(HttpError::NotFound),
     }
@@ -281,5 +282,31 @@ fn question(_path: Split<char>, _params: HashMap<String, String>) -> Result<Http
         "#,
         image_element(random_centre(), random_delta()),
         image_element(random_centre(), random_delta()),
+    )))
+}
+
+// ----------------------------------------------------------------------------
+
+fn parse_colour(input: &str) -> Result<(u8, u8, u8), HttpError> {
+    let mut input = input.split(',');
+    let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+    let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+    let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+    if let Some(_) = input.next() { Err(HttpError::Invalid)? }
+    Ok((r, g, b))
+}
+
+fn submit(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+    let which = params.get("which").ok_or(HttpError::Invalid)?.parse::<u8>()?;
+    let is_first = which == 1;
+    let win1 = parse_colour(params.get("win1").ok_or(HttpError::Invalid)?)?;
+    let win2 = parse_colour(params.get("win2").ok_or(HttpError::Invalid)?)?;
+    let lose1 = parse_colour(params.get("lose1").ok_or(HttpError::Invalid)?)?;
+    let lose2 = parse_colour(params.get("lose2").ok_or(HttpError::Invalid)?)?;
+    Ok(HttpOkay::Text(format!(
+        "is_first={:?}, win1={:?}, win2={:?}, lose1={:?}, lose2={:?}",
+        is_first,
+        win1, win2,
+        lose1, lose2,
     )))
 }
