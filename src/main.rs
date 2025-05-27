@@ -13,6 +13,7 @@ use url::{Url};
 pub enum HttpOkay {
     File(File),
     Text(String),
+    Html(String),
     Data(Vec<u8>),
     Static(&'static [u8], &'static str),
 }
@@ -68,6 +69,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(HttpOkay::Text(text)) => {
                 request.respond(Response::from_string(text))
             },
+            Ok(HttpOkay::Html(text)) => {
+                let header = header("Content-Type", "text/html");
+                request.respond(Response::from_string(text).with_header(header))
+            },
             Ok(HttpOkay::Data(data)) => {
                 let header = header("Content-Type", "image/png");
                 request.respond(Response::from_data(data).with_header(header))
@@ -110,10 +115,10 @@ fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
     let mut path = url.path_segments().unwrap();
     match path.next() {
         Some("static") => static_file(path, params),
+        Some("question") => question(path, params),
         Some("image.png") => image(path, params),
         _ => Err(HttpError::NotFound),
     }
-    
 }
 
 // ----------------------------------------------------------------------------
@@ -169,4 +174,112 @@ fn image(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay
     writer.finish()?;
 
     Ok(HttpOkay::Data(output_bytes))
+}
+
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Copy, Clone)]
+struct Delta(i8, i8, i8);
+
+const DELTAS: [Delta; 6] = [
+    Delta(10, 10, 0), Delta(10, -10, 0),
+    Delta(10, 0, 10), Delta(10, 0, -10),
+    Delta(0, 10, 10), Delta(0, 10, -10),
+];
+
+impl std::ops::Neg for Delta {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output { Self(-self.0, -self.1, -self.2) }
+}
+
+/// Return a random element of `DELTAS`.
+fn random_delta() -> Delta {
+    let delta = DELTAS[rand::random_range(0..DELTAS.len())];
+    if rand::random() { delta } else { -delta }
+}
+
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Copy, Clone)]
+struct Centre(u8, u8, u8);
+
+const CENTRES: [Centre; 35] = [
+    Centre( 25,  25,  25), Centre(127,  25,  25), Centre(229,  25,  25),
+    Centre( 25, 127,  25), Centre(127, 127,  25), Centre(229, 127,  25),
+    Centre( 25, 229,  25), Centre(127, 229,  25), Centre(229, 229,  25),
+
+    Centre( 25,  25, 127), Centre(127,  25, 127), Centre(229,  25, 127),
+    Centre( 25, 127, 127), Centre(127, 127, 127), Centre(229, 127, 127),
+    Centre( 25, 229, 127), Centre(127, 229, 127), Centre(229, 229, 127),
+
+    Centre( 25,  25, 229), Centre(127,  25, 229), Centre(229,  25, 229),
+    Centre( 25, 127, 229), Centre(127, 127, 229), Centre(229, 127, 229),
+    Centre( 25, 229, 229), Centre(127, 229, 229), Centre(229, 229, 229),
+
+    Centre( 76,  76,  76), Centre(178,  76,  76),
+    Centre( 76, 178,  76), Centre(178, 178,  76),
+
+    Centre( 76,  76, 178), Centre(178,  76, 178),
+    Centre( 76, 178, 178), Centre(178, 178, 178),
+];
+
+/// Return a random element of `CENTRES`.
+fn random_centre() -> Centre { CENTRES[rand::random_range(0..CENTRES.len())] }
+
+impl std::ops::Add<Delta> for Centre {
+    type Output = (u8, u8, u8);
+
+    fn add(self, rhs: Delta) -> Self::Output {
+        (
+            ((self.0 as i32) + (rhs.0 as i32)) as u8,
+            ((self.1 as i32) + (rhs.1 as i32)) as u8,
+            ((self.2 as i32) + (rhs.2 as i32)) as u8,
+        )
+    }
+}
+
+impl std::ops::Sub<Delta> for Centre {
+    type Output = (u8, u8, u8);
+
+    fn sub(self, rhs: Delta) -> Self::Output { self + -rhs }
+}
+
+// ----------------------------------------------------------------------------
+
+fn image_element(centre: Centre, delta: Delta) -> String {
+    let c1 = centre + delta;
+    let c2 = centre - delta;
+    format!(
+        r#"<img src="/image.png?r1={}&g1={}&b1={}&r2={}&g2={}&b2={}"/>"#,
+        c1.0, c1.1, c1.2,
+        c2.0, c2.1, c2.2,
+    )
+}
+
+fn question(_path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+    Ok(HttpOkay::Html(format!(
+        r#"
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>Click on the one that is most visible</title>
+                    <link rel="stylesheet" href="/static/stylesheet.css">
+                </head>
+                <body>
+                    <div class="box">
+                        <p class="instruction">Click on the image where the text is most easily visible.</p>
+                        <div class="question">
+                            <div class="images">
+                                {}
+                                {}
+                            </div>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        "#,
+        image_element(random_centre(), random_delta()),
+        image_element(random_centre(), random_delta()),
+    )))
 }
