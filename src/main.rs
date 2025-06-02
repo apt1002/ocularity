@@ -1,5 +1,6 @@
 use std::collections::{HashMap};
 use std::error::{Error};
+use std::io::{Write};
 use std::fs::{File};
 use std::str::{Split};
 
@@ -223,7 +224,7 @@ impl Ocularity {
             Some("static") => Self::static_file(path, params),
             Some("image.png") => Self::image(path, params),
             Some("question") => Self::question(path, params),
-            Some("submit") => self.submit(path, params),
+            Some("submit") => self.submit(request.remote_addr().unwrap(), params),
             _ => Err(HttpError::NotFound),
         }
     }
@@ -350,13 +351,24 @@ impl Ocularity {
     }
 
     /// Log the answer to a `question()`.
-    pub fn submit(&self, _path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+    pub fn submit(
+        &self,
+        remote_addr: &std::net::SocketAddr,
+        params: HashMap<String, String>,
+    ) -> Result<HttpOkay, HttpError> {
         let which = params.get("which").ok_or(HttpError::Invalid)?.parse::<u8>()?;
         let is_first = which == 1;
         let win1 = Self::parse_colour(params.get("win1").ok_or(HttpError::Invalid)?)?;
         let win2 = Self::parse_colour(params.get("win2").ok_or(HttpError::Invalid)?)?;
         let lose1 = Self::parse_colour(params.get("lose1").ok_or(HttpError::Invalid)?)?;
         let lose2 = Self::parse_colour(params.get("lose2").ok_or(HttpError::Invalid)?)?;
+        writeln!(&self.results, "{}, {}, {}, {}, {}, {}, {}",
+            remote_addr.ip(),
+            chrono::Utc::now(),
+            which,
+            win1, win2,
+            lose1, lose2,
+        )?;
         Ok(HttpOkay::Text(format!(
             "is_first={:?}, win1={:?}, win2={:?}, lose1={:?}, lose2={:?}",
             is_first,
