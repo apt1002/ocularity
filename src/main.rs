@@ -58,6 +58,18 @@ fn header(key: &str, value: &str) -> tiny_http::Header {
 
 // ----------------------------------------------------------------------------
 
+/// An sRGB colour.
+#[derive(Debug, Copy, Clone)]
+struct Colour(u8, u8, u8);
+
+impl std::fmt::Display for Colour {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},{},{}", self.0, self.1, self.2)
+    }
+}
+
+// ----------------------------------------------------------------------------
+
 #[derive(Debug, Copy, Clone)]
 struct Delta(i8, i8, i8);
 
@@ -108,10 +120,10 @@ const CENTRES: [Centre; 35] = [
 fn random_centre() -> Centre { CENTRES[rand::random_range(0..CENTRES.len())] }
 
 impl std::ops::Add<Delta> for Centre {
-    type Output = (u8, u8, u8);
+    type Output = Colour;
 
     fn add(self, rhs: Delta) -> Self::Output {
-        (
+        Colour(
             ((self.0 as i32) + (rhs.0 as i32)) as u8,
             ((self.1 as i32) + (rhs.1 as i32)) as u8,
             ((self.2 as i32) + (rhs.2 as i32)) as u8,
@@ -120,7 +132,7 @@ impl std::ops::Add<Delta> for Centre {
 }
 
 impl std::ops::Sub<Delta> for Centre {
-    type Output = (u8, u8, u8);
+    type Output = Colour;
 
     fn sub(self, rhs: Delta) -> Self::Output { self + -rhs }
 }
@@ -218,15 +230,23 @@ impl Ocularity {
 
 
     const STYLESHEET: &[u8] = include_bytes!("stylesheet.css");
-    const QUESTION: &[u8] = include_bytes!("question.html");
 
     /// Serve a static file.
     fn static_file(mut path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
         match path.next() {
             Some("stylesheet.css") => Ok(HttpOkay::Static(Self::STYLESHEET, "text/css")),
-            Some("question.html") => Ok(HttpOkay::Static(Self::QUESTION, "text/html")),
             _ => Err(HttpError::Invalid),
         }
+    }
+
+    /// Parses a URL parameter representing an RGB colour.
+    fn parse_colour(input: &str) -> Result<Colour, HttpError> {
+        let mut input = input.split(',');
+        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
+        Ok(Colour(r, g, b))
     }
 
     /// The test pattern (black-and-white version).
@@ -234,20 +254,16 @@ impl Ocularity {
 
     /// Serve an image file.
     pub fn image(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-        let r1 = params.get("r1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-        let g1 = params.get("g1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-        let b1 = params.get("b1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-        let r2 = params.get("r2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-        let g2 = params.get("g2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-        let b2 = params.get("b2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let bg = Self::parse_colour(params.get("bg").ok_or(HttpError::Invalid)?)?;
+        let fg = Self::parse_colour(params.get("fg").ok_or(HttpError::Invalid)?)?;
 
         // Construct the palette.
         let mut palette = Vec::new();
         for i in 0..256 {
             let f = (i as f32) / 255.0;
-            palette.push((r1 + f * (r2 - r1)) as u8);
-            palette.push((g1 + f * (g2 - g1)) as u8);
-            palette.push((b1 + f * (b2 - b1)) as u8);
+            palette.push(((bg.0 as f32) + f * ((fg.0 as f32) - (bg.0 as f32))) as u8);
+            palette.push(((bg.1 as f32) + f * ((fg.1 as f32) - (bg.1 as f32))) as u8);
+            palette.push(((bg.2 as f32) + f * ((fg.2 as f32) - (bg.2 as f32))) as u8);
         }
 
         // Read the input image.
@@ -270,19 +286,43 @@ impl Ocularity {
         Ok(HttpOkay::Data(output_bytes))
     }
 
-    /// Construct an `<img>` element.
-    fn image_element(centre: Centre, delta: Delta) -> String {
-        let c1 = centre + delta;
-        let c2 = centre - delta;
+    /// Generates two similar colours at random.
+    fn random_colour_pair() -> (Colour, Colour) {
+        let centre = random_centre();
+        let delta = random_delta();
+        (centre + delta, centre - delta)
+    }
+
+    /// Construct a `<form>` element containing an `<input type="image">`.
+    ///
+    /// - which - `1` for the first image and `2` for the second.
+    /// - win1 - the background colour for this image.
+    /// - win2 - the foreground colour for this image.
+    /// - lose1 - the background colour for the other image.
+    /// - lose2 - the foreground colour for the other image.
+    fn form_element(which: usize, win: (Colour, Colour), lose: (Colour, Colour)) -> String {
         format!(
-            r#"<img src="/image.png?r1={}&g1={}&b1={}&r2={}&g2={}&b2={}"/>"#,
-            c1.0, c1.1, c1.2,
-            c2.0, c2.1, c2.2,
+            r#"
+                                    <form action="/submit">
+                                        <input type="hidden" name="which" value="{}">
+                                        <input type="hidden" name="win1" value="{}"/>
+                                        <input type="hidden" name="win2" value="{}"/>
+                                        <input type="hidden" name="lose1" value="{}"/>
+                                        <input type="hidden" name="lose2" value="{}"/>
+                                        <input type="image" src="/image.png?bg={}&fg={}"/>
+                                    </form>
+            "#,
+            which,
+            win.0, win.1,
+            lose.0, lose.1,
+            win.0, win.1,
         )
     }
 
     /// Returns a question comparing two images.
     pub fn question(_path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+        let pair1 = Self::random_colour_pair();
+        let pair2 = Self::random_colour_pair();
         Ok(HttpOkay::Html(format!(
             r#"
                 <!DOCTYPE html>
@@ -304,19 +344,9 @@ impl Ocularity {
                     </body>
                 </html>
             "#,
-            Self::image_element(random_centre(), random_delta()),
-            Self::image_element(random_centre(), random_delta()),
+            Self::form_element(1, pair1, pair2),
+            Self::form_element(2, pair2, pair1),
         )))
-    }
-
-    /// Parses a URL parameter representing an RGB colour.
-    fn parse_colour(input: &str) -> Result<(u8, u8, u8), HttpError> {
-        let mut input = input.split(',');
-        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
-        Ok((r, g, b))
     }
 
     /// Log the answer to a `question()`.
