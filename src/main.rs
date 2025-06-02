@@ -58,127 +58,6 @@ fn header(key: &str, value: &str) -> tiny_http::Header {
 
 // ----------------------------------------------------------------------------
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let server = tiny_http::Server::http("127.0.0.1:8081").unwrap();
-    println!("Listening on http://{}", server.server_addr());
-    for request in server.incoming_requests() {
-        match handle_request(&request) {
-            Ok(HttpOkay::File(file)) => {
-                request.respond(Response::from_file(file))
-            },
-            Ok(HttpOkay::Text(text)) => {
-                request.respond(Response::from_string(text))
-            },
-            Ok(HttpOkay::Html(text)) => {
-                let header = header("Content-Type", "text/html");
-                request.respond(Response::from_string(text).with_header(header))
-            },
-            Ok(HttpOkay::Data(data)) => {
-                let header = header("Content-Type", "image/png");
-                request.respond(Response::from_data(data).with_header(header))
-            },
-            Ok(HttpOkay::Static(data, content_type)) => {
-                let header = header("Content-Type", content_type);
-                request.respond(Response::from_data(data).with_header(header))
-            },
-            Err(HttpError::Invalid) => {
-                request.respond(Response::from_string("Invalid request").with_status_code(400))
-            },
-            Err(HttpError::NotFound) => {
-                request.respond(Response::from_string("Not found").with_status_code(404))
-            },
-            Err(e) => {
-                println!("Error: {}", e);
-                request.respond(Response::from_string("Internal error").with_status_code(500))
-            },
-        }.unwrap_or_else(|e2| println!("IO Error: {}", e2));
-    }
-    Ok(())
-}
-
-const BASE_URL: &'static str = "https://www.minworks.co.uk";
-
-fn handle_request(request: &Request) -> Result<HttpOkay, HttpError> {
-    match request.method() {
-        Method::Get => {},
-        _ => return Err(HttpError::Invalid),
-    }
-
-    let url = request.url();
-    let url = url_escape::decode(url).into_owned();
-    let url = Url::parse(BASE_URL).unwrap().join(&url)?;
-    println!("{:?}", url);
-    let params: HashMap<String, String> = url.query_pairs().map(
-        |(key, value)| (key.into_owned(), value.into_owned())
-    ).collect();
-    println!("{:?}", params);
-    let mut path = url.path_segments().unwrap();
-    match path.next() {
-        Some("static") => static_file(path, params),
-        Some("question") => question(path, params),
-        Some("submit") => submit(path, params),
-        Some("image.png") => image(path, params),
-        _ => Err(HttpError::NotFound),
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-const STYLESHEET: &[u8] = include_bytes!("stylesheet.css");
-const QUESTION: &[u8] = include_bytes!("question.html");
-
-fn static_file(mut path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-    match path.next() {
-        Some("stylesheet.css") => Ok(HttpOkay::Static(STYLESHEET, "text/css")),
-        Some("question.html") => Ok(HttpOkay::Static(QUESTION, "text/html")),
-        _ => Err(HttpError::Invalid),
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-/// The test pattern (black-and-white version).
-const TEST_PATTERN: &[u8] = include_bytes!("test-pattern-grey.png");
-
-fn image(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-    let r1 = params.get("r1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-    let g1 = params.get("g1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-    let b1 = params.get("b1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-    let r2 = params.get("r2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-    let g2 = params.get("g2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-    let b2 = params.get("b2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
-
-    // Construct the palette.
-    let mut palette = Vec::new();
-    for i in 0..256 {
-        let f = (i as f32) / 255.0;
-        palette.push((r1 + f * (r2 - r1)) as u8);
-        palette.push((g1 + f * (g2 - g1)) as u8);
-        palette.push((b1 + f * (b2 - b1)) as u8);
-    }
-
-    // Read the input image.
-    let decoder = png::Decoder::new(TEST_PATTERN);
-    let mut reader = decoder.read_info()?;
-    let mut buf = vec![0; reader.output_buffer_size()];
-    let input_info = reader.next_frame(&mut buf).unwrap();
-    assert_eq!(input_info.color_type, png::ColorType::Grayscale);
-    let pixel_data = &buf[..input_info.buffer_size()];
-
-    // Generate the output image.
-    let mut output_bytes: Vec<u8> = Vec::new();
-    let mut encoder = png::Encoder::new(&mut output_bytes, input_info.width, input_info.height);
-    encoder.set_color(png::ColorType::Indexed);
-    encoder.set_palette(palette);
-    let mut writer = encoder.write_header()?;
-    writer.write_image_data(pixel_data)?;
-    writer.finish()?;
-
-    Ok(HttpOkay::Data(output_bytes))
-}
-
-// ----------------------------------------------------------------------------
-
 #[derive(Debug, Copy, Clone)]
 struct Delta(i8, i8, i8);
 
@@ -248,65 +127,224 @@ impl std::ops::Sub<Delta> for Centre {
 
 // ----------------------------------------------------------------------------
 
-fn image_element(centre: Centre, delta: Delta) -> String {
-    let c1 = centre + delta;
-    let c2 = centre - delta;
-    format!(
-        r#"<img src="/image.png?r1={}&g1={}&b1={}&r2={}&g2={}&b2={}"/>"#,
-        c1.0, c1.1, c1.2,
-        c2.0, c2.1, c2.2,
-    )
+struct Ocularity {
+    /// Web server.
+    pub server: tiny_http::Server,
+
+    /// The external URL of the server.
+    pub base_url: Url,
+
+    /// Results file for experimental results.
+    pub results: File,
 }
 
-fn question(_path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-    Ok(HttpOkay::Html(format!(
-        r#"
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <title>Click on the one that is most visible</title>
-                    <link rel="stylesheet" href="/static/stylesheet.css">
-                </head>
-                <body>
-                    <div class="box">
-                        <p class="instruction">Click on the image where the text is most easily visible.</p>
-                        <div class="question">
-                            <div class="images">
-                                {}
-                                {}
+impl Ocularity {
+    fn new(addr: &str, base_url: &str, results_filename: &str) -> Self {
+        let server = Self {
+            server: tiny_http::Server::http(addr)
+                .expect("Could not create the web server"),
+            base_url: url::Url::parse(base_url)
+                .expect("Could not parse the base URL"),
+            results: std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(results_filename)
+                .expect("Could not open the results file"),
+        };
+        println!("Listening on http://{}", server.server.server_addr());
+        server
+    }
+
+    /// Handle requests for ever.
+    fn handle_requests(&self) {
+        for request in self.server.incoming_requests() {
+            match self.handle_request(&request) {
+                Ok(HttpOkay::File(file)) => {
+                    request.respond(Response::from_file(file))
+                },
+                Ok(HttpOkay::Text(text)) => {
+                    request.respond(Response::from_string(text))
+                },
+                Ok(HttpOkay::Html(text)) => {
+                    let header = header("Content-Type", "text/html");
+                    request.respond(Response::from_string(text).with_header(header))
+                },
+                Ok(HttpOkay::Data(data)) => {
+                    let header = header("Content-Type", "image/png");
+                    request.respond(Response::from_data(data).with_header(header))
+                },
+                Ok(HttpOkay::Static(data, content_type)) => {
+                    let header = header("Content-Type", content_type);
+                    request.respond(Response::from_data(data).with_header(header))
+                },
+                Err(HttpError::Invalid) => {
+                    request.respond(Response::from_string("Invalid request").with_status_code(400))
+                },
+                Err(HttpError::NotFound) => {
+                    request.respond(Response::from_string("Not found").with_status_code(404))
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    request.respond(Response::from_string("Internal error").with_status_code(500))
+                },
+            }.unwrap_or_else(|e2| println!("IO Error: {}", e2));
+        }
+    }
+
+    /// Handle a single request.
+    fn handle_request(&self, request: &Request) -> Result<HttpOkay, HttpError> {
+        match request.method() {
+            Method::Get => {},
+            _ => return Err(HttpError::Invalid),
+        }
+
+        let url = request.url();
+        let url = url_escape::decode(url).into_owned();
+        let url = self.base_url.join(&url)?;
+        println!("{:?}", url);
+        let params: HashMap<String, String> = url.query_pairs().map(
+            |(key, value)| (key.into_owned(), value.into_owned())
+        ).collect();
+        println!("{:?}", params);
+        let mut path = url.path_segments().unwrap();
+        match path.next() {
+            Some("static") => Self::static_file(path, params),
+            Some("image.png") => Self::image(path, params),
+            Some("question") => Self::question(path, params),
+            Some("submit") => self.submit(path, params),
+            _ => Err(HttpError::NotFound),
+        }
+    }
+
+
+    const STYLESHEET: &[u8] = include_bytes!("stylesheet.css");
+    const QUESTION: &[u8] = include_bytes!("question.html");
+
+    /// Serve a static file.
+    fn static_file(mut path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+        match path.next() {
+            Some("stylesheet.css") => Ok(HttpOkay::Static(Self::STYLESHEET, "text/css")),
+            Some("question.html") => Ok(HttpOkay::Static(Self::QUESTION, "text/html")),
+            _ => Err(HttpError::Invalid),
+        }
+    }
+
+    /// The test pattern (black-and-white version).
+    const TEST_PATTERN: &[u8] = include_bytes!("test-pattern-grey.png");
+
+    /// Serve an image file.
+    pub fn image(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+        let r1 = params.get("r1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let g1 = params.get("g1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let b1 = params.get("b1").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let r2 = params.get("r2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let g2 = params.get("g2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+        let b2 = params.get("b2").ok_or(HttpError::Invalid)?.parse::<u8>()? as f32;
+
+        // Construct the palette.
+        let mut palette = Vec::new();
+        for i in 0..256 {
+            let f = (i as f32) / 255.0;
+            palette.push((r1 + f * (r2 - r1)) as u8);
+            palette.push((g1 + f * (g2 - g1)) as u8);
+            palette.push((b1 + f * (b2 - b1)) as u8);
+        }
+
+        // Read the input image.
+        let decoder = png::Decoder::new(Self::TEST_PATTERN);
+        let mut reader = decoder.read_info()?;
+        let mut buf = vec![0; reader.output_buffer_size()];
+        let input_info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!(input_info.color_type, png::ColorType::Grayscale);
+        let pixel_data = &buf[..input_info.buffer_size()];
+
+        // Generate the output image.
+        let mut output_bytes: Vec<u8> = Vec::new();
+        let mut encoder = png::Encoder::new(&mut output_bytes, input_info.width, input_info.height);
+        encoder.set_color(png::ColorType::Indexed);
+        encoder.set_palette(palette);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(pixel_data)?;
+        writer.finish()?;
+
+        Ok(HttpOkay::Data(output_bytes))
+    }
+
+    /// Construct an `<img>` element.
+    fn image_element(centre: Centre, delta: Delta) -> String {
+        let c1 = centre + delta;
+        let c2 = centre - delta;
+        format!(
+            r#"<img src="/image.png?r1={}&g1={}&b1={}&r2={}&g2={}&b2={}"/>"#,
+            c1.0, c1.1, c1.2,
+            c2.0, c2.1, c2.2,
+        )
+    }
+
+    /// Returns a question comparing two images.
+    pub fn question(_path: Split<char>, _params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+        Ok(HttpOkay::Html(format!(
+            r#"
+                <!DOCTYPE html>
+                <html>
+                    <head>
+                        <title>Click on the one that is most visible</title>
+                        <link rel="stylesheet" href="/static/stylesheet.css">
+                    </head>
+                    <body>
+                        <div class="box">
+                            <p class="instruction">Click on the image where the text is most easily visible.</p>
+                            <div class="question">
+                                <div class="images">
+                                    {}
+                                    {}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </body>
-            </html>
-        "#,
-        image_element(random_centre(), random_delta()),
-        image_element(random_centre(), random_delta()),
-    )))
+                    </body>
+                </html>
+            "#,
+            Self::image_element(random_centre(), random_delta()),
+            Self::image_element(random_centre(), random_delta()),
+        )))
+    }
+
+    /// Parses a URL parameter representing an RGB colour.
+    fn parse_colour(input: &str) -> Result<(u8, u8, u8), HttpError> {
+        let mut input = input.split(',');
+        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
+        Ok((r, g, b))
+    }
+
+    /// Log the answer to a `question()`.
+    pub fn submit(&self, _path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
+        let which = params.get("which").ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let is_first = which == 1;
+        let win1 = Self::parse_colour(params.get("win1").ok_or(HttpError::Invalid)?)?;
+        let win2 = Self::parse_colour(params.get("win2").ok_or(HttpError::Invalid)?)?;
+        let lose1 = Self::parse_colour(params.get("lose1").ok_or(HttpError::Invalid)?)?;
+        let lose2 = Self::parse_colour(params.get("lose2").ok_or(HttpError::Invalid)?)?;
+        Ok(HttpOkay::Text(format!(
+            "is_first={:?}, win1={:?}, win2={:?}, lose1={:?}, lose2={:?}",
+            is_first,
+            win1, win2,
+            lose1, lose2,
+        )))
+    }
 }
 
 // ----------------------------------------------------------------------------
 
-fn parse_colour(input: &str) -> Result<(u8, u8, u8), HttpError> {
-    let mut input = input.split(',');
-    let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-    let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-    let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-    if let Some(_) = input.next() { Err(HttpError::Invalid)? }
-    Ok((r, g, b))
-}
+/// The path where the experimental results are written.
+const RESULT_FILENAME: &'static str = "/tmp/ocularity-results.log";
 
-fn submit(_path: Split<char>, params: HashMap<String, String>) -> Result<HttpOkay, HttpError> {
-    let which = params.get("which").ok_or(HttpError::Invalid)?.parse::<u8>()?;
-    let is_first = which == 1;
-    let win1 = parse_colour(params.get("win1").ok_or(HttpError::Invalid)?)?;
-    let win2 = parse_colour(params.get("win2").ok_or(HttpError::Invalid)?)?;
-    let lose1 = parse_colour(params.get("lose1").ok_or(HttpError::Invalid)?)?;
-    let lose2 = parse_colour(params.get("lose2").ok_or(HttpError::Invalid)?)?;
-    Ok(HttpOkay::Text(format!(
-        "is_first={:?}, win1={:?}, win2={:?}, lose1={:?}, lose2={:?}",
-        is_first,
-        win1, win2,
-        lose1, lose2,
-    )))
+/// The externally visible URL of the server.
+const BASE_URL: &'static str = "https://www.minworks.co.uk/ocularity";
+
+fn main() {
+    let server = Ocularity::new("127.0.0.1:8081", BASE_URL, RESULT_FILENAME);
+    server.handle_requests();
 }
