@@ -1,0 +1,10 @@
+[Unit]
+Description=Ocularity colour perception experiment
+After=network.target
+
+[Service]
+Environment="OCULARITY_BASE_URL=http://localhost:8081"
+ExecStart=/home/apt1002/ocularity/target/release/ocularity
+
+[Install]
+WantedBy=default.target
