@@ -218,11 +218,10 @@ impl Ocularity {
         let url = request.url();
         let url = url_escape::decode(url).into_owned();
         let url = self.base_url.join(&url)?;
-        println!("{:?}", url);
+        println!("{} {}", request.remote_addr().unwrap().ip(), url);
         let params: HashMap<String, String> = url.query_pairs().map(
             |(key, value)| (key.into_owned(), value.into_owned())
         ).collect();
-        println!("{:?}", params);
         let mut path = url.path_segments().unwrap();
         match path.next() {
             Some("static") => Self::static_file(path, params),
