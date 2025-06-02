@@ -17,6 +17,7 @@ pub enum HttpOkay {
     Html(String),
     Data(Vec<u8>),
     Static(&'static [u8], &'static str),
+    Redirect(String),
 }
 
 // An erroneous HTTP response.
@@ -164,7 +165,6 @@ impl Ocularity {
                 .open(results_filename)
                 .expect("Could not open the results file"),
         };
-        println!("Listening on http://{}", server.server.server_addr());
         server
     }
 
@@ -189,6 +189,10 @@ impl Ocularity {
                 Ok(HttpOkay::Static(data, content_type)) => {
                     let header = header("Content-Type", content_type);
                     request.respond(Response::from_data(data).with_header(header))
+                },
+                Ok(HttpOkay::Redirect(relative_url)) => {
+                    let header = header("Location", self.base_url.join(&relative_url).unwrap().as_str());
+                    request.respond(Response::from_string("Moved Permanently").with_status_code(301).with_header(header))
                 },
                 Err(HttpError::Invalid) => {
                     request.respond(Response::from_string("Invalid request").with_status_code(400))
@@ -365,16 +369,11 @@ impl Ocularity {
         writeln!(&self.results, "{}, {}, {}, {}, {}, {}, {}",
             remote_addr.ip(),
             chrono::Utc::now(),
-            which,
-            win1, win2,
-            lose1, lose2,
-        )?;
-        Ok(HttpOkay::Text(format!(
-            "is_first={:?}, win1={:?}, win2={:?}, lose1={:?}, lose2={:?}",
             is_first,
             win1, win2,
             lose1, lose2,
-        )))
+        )?;
+        Ok(HttpOkay::Redirect("question".into()))
     }
 }
 
@@ -383,10 +382,13 @@ impl Ocularity {
 /// The path where the experimental results are written.
 const RESULT_FILENAME: &'static str = "/tmp/ocularity-results.log";
 
-/// The externally visible URL of the server.
-const BASE_URL: &'static str = "https://www.minworks.co.uk/ocularity";
+/// The server address and port to listen on.
+const SERVER_ADDRESS: &'static str = "127.0.0.1:8081";
 
 fn main() {
-    let server = Ocularity::new("127.0.0.1:8081", BASE_URL, RESULT_FILENAME);
+    let server_url = format!("http://{}", SERVER_ADDRESS);
+    let base_url = std::env::var("OCULARITY_BASE_URL").unwrap_or_else(|_| server_url.clone());
+    let server = Ocularity::new(SERVER_ADDRESS, &base_url, RESULT_FILENAME);
+    println!("Listening on {}", server_url);
     server.handle_requests();
 }
