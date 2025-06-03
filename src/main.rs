@@ -79,21 +79,28 @@ impl std::fmt::Display for Colour {
 struct Delta(i8, i8, i8);
 
 const DELTAS: [Delta; 6] = [
-    Delta(10, 10, 0), Delta(10, -10, 0),
-    Delta(10, 0, 10), Delta(10, 0, -10),
-    Delta(0, 10, 10), Delta(0, 10, -10),
+    Delta(2, 2, -3), Delta(5, -5, 0),
+    Delta(2, -3, 2), Delta(5, 0, -5),
+    Delta(-3, 2, 2), Delta(0, 5, -5),
 ];
+
+const SCALES: [i8; 10] = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5];
+
+impl std::ops::Mul<i8> for Delta {
+    type Output = Self;
+
+    fn mul(self, rhs: i8) -> Self::Output { Self(self.0 * rhs, self.1 * rhs, self.2 * rhs) }
+}
 
 impl std::ops::Neg for Delta {
     type Output = Self;
 
-    fn neg(self) -> Self::Output { Self(-self.0, -self.1, -self.2) }
+    fn neg(self) -> Self::Output { self * -1 }
 }
 
 /// Return a random element of `DELTAS`.
 fn random_delta() -> Delta {
-    let delta = DELTAS[rand::random_range(0..DELTAS.len())];
-    if rand::random() { delta } else { -delta }
+    DELTAS[rand::random_range(0..DELTAS.len())] * SCALES[rand::random_range(0..SCALES.len())]
 }
 
 // ----------------------------------------------------------------------------
