@@ -413,16 +413,18 @@ impl Ocularity {
 
 // ----------------------------------------------------------------------------
 
-/// The path where the experimental results are written.
-const RESULT_FILENAME: &'static str = "/tmp/ocularity-results.log";
+/// The default path where the experimental results are written.
+const RESULTS_FILENAME: &'static str = "/tmp/ocularity-results.log";
 
-/// The server address and port to listen on.
+/// The default server address and port to listen on.
 const SERVER_ADDRESS: &'static str = "127.0.0.1:8081";
 
 fn main() {
-    let server_url = format!("http://{}", SERVER_ADDRESS);
+    let results_filename = std::env::var("OCULARITY_RESULTS").unwrap_or_else(|_| RESULTS_FILENAME.to_owned());
+    let server_address = std::env::var("OCULARITY_ADDRESS").unwrap_or_else(|_| SERVER_ADDRESS.to_owned());
+    let server_url = format!("http://{}", server_address);
     let base_url = std::env::var("OCULARITY_BASE_URL").unwrap_or_else(|_| server_url.clone());
-    let server = Ocularity::new(SERVER_ADDRESS, &base_url, RESULT_FILENAME);
+    let server = Ocularity::new(&server_address, &base_url, &results_filename);
     println!("Listening on {}", server_url);
     server.handle_requests();
 }
