@@ -53,7 +53,7 @@ Run the following commands:
 
 ```sh
 loginctl enable-linger
-systemctl --user --enable ocularity.service
+systemctl --user enable ocularity.service
 systemctl --user start ocularity.service
 ```
 
