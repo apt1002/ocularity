@@ -1,6 +1,11 @@
-body {
+body.grey {
     background-color: #808080;
     height: 100vh;
+}
+
+body.questionnaire {
+    max-width: 50em;
+    margin: auto;
 }
 
 .box {

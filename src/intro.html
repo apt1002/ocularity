@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ocularity</title>
+    <link rel="stylesheet" href="/stylesheet.css">
+</head>
+<body class="questionnaire">
+
+<h1>Ocularity</h1>
+
+<p>This is an experiment. It measures how humans see colour. More specifically it measures what colours humans can distinguish.</p>
+
+<h2>What you do</h2>
+
+<p>When you click "Start the experiment" below, you will be shown two images. The images will be the same apart from their colours. Your task is to click on the one in which you can see the details more clearly.</p>
+
+<p>Each time you answer, you will be shown two more images. We hope you will keep answering for between 5 and 15 minutes. You can stop the experiment at any time by closing the browser window.</p>
+
+<h2>Questionnaire</h2>
+
+<p>All the following questions are optional. If you choose to answer them, we might learn something extra.</p>
+
+<form action="/start">
+
+<h3>About you</h3>
+
+<div class="field">
+    <label for="age">Your age:</label>
+    <select name="age">
+        <option value="_">Choose</option>
+        <option value="0">0-14</option>
+        <option value="1">15-34</option>
+        <option value="3">35-54</option>
+        <option value="5">55-74</option>
+        <option value="7">75+</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="sex">Your sex:</label>
+    <select name="sex">
+        <option value="_">Choose</option>
+        <option value="M">Male</option>
+        <option value="F">Female</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="eye_colour">Your eye colour:</label>
+    <select name="eye_colour">
+        <option value="_">Choose</option>
+        <option value="D">Dark</option>
+        <option value="H">Hazel or brown</option>
+        <option value="G">Green or grey</option>
+        <option value="B">Blue</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<h3>About your eyesight</h3>
+
+<div class="field">
+    <label for="cvd">Are you colourblind?</label>
+    <select name="cvd">
+        <option value="_">Choose</option>
+        <option value="T">No, Typical</option>
+        <option value="R">Red = Green</option>
+        <option value="Y">Yellow = Blue</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="eyewear">Your eyewear:</label>
+    <select name="eyewear">
+        <option value="_">Choose</option>
+        <option value="N">None</option>
+        <option value="C">Contact lenses</option>
+        <option value="G">Glasses</option>
+        <option value="T">Tinted Glasses</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="surgery">Have you had eye surgery?</label>
+    <select name="surgery">
+        <option value="_">Choose</option>
+        <option value="N">None</option>
+        <option value="C">Cataract</option>
+        <option value="L">Laser</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<h3>About your surroundings</h3>
+
+<div class="field">
+    <label for="where">Where are you?</label>
+    <select name="where">
+        <option value="_">Choose</option>
+        <option value="E">Outdoors</option>
+        <option value="I">Indoors</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="light">What kind of light are you using?</label>
+    <select name="light">
+        <option value="_">Choose</option>
+        <option value="S">Sunlight</option>
+        <option value="L">LED light</option>
+        <option value="F">Fluorescent light</option>
+        <option value="I">Incandescent light</option>
+        <option value="N">Sodium light</option>
+        <option value="A">Other artificial light</option>
+        <option value="C">Candle or fire light</option>
+        <option value="D">None: it's dark</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="company">Are you alone?</label>
+    <select name="company">
+        <option value="_">Choose</option>
+        <option value="A">Alone</option>
+        <option value="S">Sharing a screen</option>
+        <option value="W">Sharing a workspace</option>
+        <option value="C">Among strangers</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<h3>About your device</h3>
+
+<div class="field">
+    <label for="device">What kind of computer are you using?</label>
+    <select name="device">
+        <option value="_">Choose</option>
+        <option value="D">Desktop</option>
+        <option value="L">Laptop</option>
+        <option value="T">Tablet</option>
+        <option value="P">Phone</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="screen">What kind of screen are you using?</label>
+    <select name="screen">
+        <option value="_">Choose</option>
+        <option value="L">LED</option>
+        <option value="I">IPS</option>
+        <option value="T">TFT</option>
+        <option value="C">CRT</option>
+        <option value="E">E Ink</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<div class="field">
+    <label for="monochrome">Does your screen display colours?</label>
+    <select name="monochrome">
+        <option value="_">Choose</option>
+        <option value="C">Colour</option>
+        <option value="M">Monochrome</option>
+        <option value="O">Other</option>
+    </select>
+</div>
+
+<h3>Implicit information</h3>
+
+<p>Please note that we will also remember your IP address and the date and time when you answer the questions. This information will be used to group answers that come from you and to see how you approached the experiment (e.g. whether you were interrupted). It will also be used to filter out unconstructive behaviour, e.g. answers from bots.</p>
+
+<input type="submit" value="Start the experiment"/>
+
+</form>
+
+</body>
+</html>
