@@ -321,14 +321,14 @@ impl Ocularity {
     fn form_element(questionnaire: &str, which: usize, win: (Colour, Colour), lose: (Colour, Colour)) -> String {
         format!(
             r#"
-                <form action="/submit">
+                <form action="submit">
                     <input type="hidden" name="q" value="{}">
                     <input type="hidden" name="which" value="{}">
                     <input type="hidden" name="win1" value="{}"/>
                     <input type="hidden" name="win2" value="{}"/>
                     <input type="hidden" name="lose1" value="{}"/>
                     <input type="hidden" name="lose2" value="{}"/>
-                    <input type="image" src="/image.png?bg={}&fg={}"/>
+                    <input type="image" src="image.png?bg={}&fg={}"/>
                 </form>
             "#,
             questionnaire,
@@ -350,7 +350,7 @@ impl Ocularity {
                 <html>
                     <head>
                         <title>Click on the one that is most visible</title>
-                        <link rel="stylesheet" href="/stylesheet.css">
+                        <link rel="stylesheet" href="stylesheet.css">
                     </head>
                     <body class="grey">
                         <div class="box">
@@ -387,7 +387,7 @@ impl Ocularity {
             params.get("screen")?,
             params.get("monochrome")?,
         );
-        Ok(HttpOkay::Redirect(format!("/question?q={}", questionnaire)))
+        Ok(HttpOkay::Redirect(format!("question?q={}", questionnaire)))
     }
 
     /// Log the answer to a `question()`.
@@ -407,7 +407,7 @@ impl Ocularity {
             win1, win2,
             lose1, lose2,
         )?;
-        Ok(HttpOkay::Redirect(format!("/question?q={}", questionnaire)))
+        Ok(HttpOkay::Redirect(format!("question?q={}", questionnaire)))
     }
 }
 
