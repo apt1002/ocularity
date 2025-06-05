@@ -2,6 +2,7 @@ use std::collections::{HashMap};
 use std::error::{Error};
 use std::io::{Write};
 use std::fs::{File};
+use std::str::{FromStr};
 
 use tiny_http::{Method, Request, Response, Header};
 use url::{Url};
@@ -45,6 +46,7 @@ macro_rules! impl_from_for_error {
 
 impl_from_for_error!(std::io::Error);
 impl_from_for_error!(std::num::ParseIntError);
+impl_from_for_error!(std::char::ParseCharError);
 impl_from_for_error!(url::ParseError);
 impl_from_for_error!(png::EncodingError);
 impl_from_for_error!(png::DecodingError);
@@ -121,6 +123,20 @@ impl std::ops::Sub<Delta> for Colour {
     fn sub(self, rhs: Delta) -> Self::Output { self + -rhs }
 }
 
+impl FromStr for Colour {
+    type Err = HttpError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut it = s.split(',');
+        let r = it.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let g = it.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let b = it.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        if let Some(_) = it.next() { Err(HttpError::Invalid)? }
+        Ok(Colour(r, g, b))
+    }
+
+}
+
 const CENTRES: [Colour; 35] = [
     Colour( 25,  25,  25), Colour(127,  25,  25), Colour(229,  25,  25),
     Colour( 25, 127,  25), Colour(127, 127,  25), Colour(229, 127,  25),
@@ -146,23 +162,76 @@ fn random_centre() -> Colour { CENTRES[rand::random_range(0..CENTRES.len())] }
 
 // ----------------------------------------------------------------------------
 
+/// The `<form>` parameter names of the questions in the questionnaire.
+const QUESTIONS: [&'static str; 12] = [
+    "age", "sex", "eye_colour",
+    "cvd", "eyewear", "surgery",
+    "where", "light", "company",
+    "device", "screen", "monochrome",
+];
+
+/// Represents a user's answers to the questionnaire.
+///
+/// The `String` contains one chacter per question. Each character can be `_`
+/// (indicating that the question was not answered) or a capital letter or a
+/// digit.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct Questionnaire(String);
+
+impl FromStr for Questionnaire {
+    type Err = HttpError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != QUESTIONS.len() { Err(HttpError::Invalid)?; }
+        for c in s.chars() {
+            if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+                Err(HttpError::Invalid)?;
+            }
+        }
+        Ok(Self(s.to_owned()))
+    }
+}
+
+impl std::fmt::Display for Questionnaire {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
+}
+
+// ----------------------------------------------------------------------------
+
 /// Represent HTTP request parameters.
 #[derive(Debug)]
 pub struct Params(HashMap<String, String>);
 
 impl Params {
-    fn get(&self, key: &str) -> Result<&String, HttpError> {
-        self.0.get(key).ok_or(HttpError::Invalid)
+    fn get<T: FromStr>(&self, key: &str) -> Result<T, HttpError>
+    where HttpError: From<<T as FromStr>::Err> {
+        Ok(self.0.get(key).ok_or(HttpError::Invalid)?.parse::<T>()?)
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+/// Information about a user.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct Session{
+    pub id: u32,
+    pub questionnaire: Questionnaire
+}
+
+impl Session {
+    /// Start a session, given answers to the questionnaire.
+    fn start(params: &Params) -> Result<Self, HttpError> {
+        let answers: Result<String, _> = QUESTIONS.iter().map(
+            |key| params.get::<char>(key)
+        ).collect();
+        Ok(Self {id: rand::random(), questionnaire: Questionnaire::from_str(&answers?)?})
     }
 
-    fn get_colour(&self, key: &str) -> Result<Colour, HttpError> {
-        let mut input = self.get(key)?.split(',');
-        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
-        Ok(Colour(r, g, b))
+    fn from_params(params: &Params) -> Result<Self, HttpError> {
+        Ok(Self {id: params.get("id")?, questionnaire: params.get("q")?})
     }
+
+    fn to_params(&self) -> String { format!("id={}&q={}", self.id, self.questionnaire) }
 }
 
 // ----------------------------------------------------------------------------
@@ -265,10 +334,10 @@ impl Ocularity {
             None | Some("") | Some("index.html") => Ok(HttpOkay::Redirect("intro.html".into())),
             Some("stylesheet.css") => Ok(HttpOkay::Static(Self::STYLESHEET, "text/css")),
             Some("intro.html") => Ok(HttpOkay::Static(Self::INTRO, "text/html")),
-            Some("image.png") => Self::image(params),
-            Some("question") => Self::question(params),
-            Some("start") => self.start(params),
-            Some("submit") => self.submit(request.remote_addr().unwrap(), params),
+            Some("image.png") => Self::image(&params),
+            Some("question") => Self::question(&params),
+            Some("start") => self.start(&params),
+            Some("submit") => self.submit(&params),
             p => { println!("Not found: {:?}", p); Err(HttpError::NotFound) },
         }
     }
@@ -277,9 +346,9 @@ impl Ocularity {
     const TEST_PATTERN: &[u8] = include_bytes!("test-pattern-grey.png");
 
     /// Serve an image file.
-    pub fn image(params: Params) -> Result<HttpOkay, HttpError> {
-        let bg = params.get_colour("bg")?;
-        let fg = params.get_colour("fg")?;
+    pub fn image(params: &Params) -> Result<HttpOkay, HttpError> {
+        let bg: Colour = params.get("bg")?;
+        let fg: Colour = params.get("fg")?;
 
         // Construct the palette.
         let mut palette = Vec::new();
@@ -325,10 +394,11 @@ impl Ocularity {
     /// - win2 - the foreground colour for this image.
     /// - lose1 - the background colour for the other image.
     /// - lose2 - the foreground colour for the other image.
-    fn form_element(questionnaire: &str, which: usize, win: (Colour, Colour), lose: (Colour, Colour)) -> String {
+    fn form_element(session: &Session, which: usize, win: (Colour, Colour), lose: (Colour, Colour)) -> String {
         format!(
             r#"
                 <form action="submit">
+                    <input type="hidden" name="id" value="{}">
                     <input type="hidden" name="q" value="{}">
                     <input type="hidden" name="which" value="{}">
                     <input type="hidden" name="win1" value="{}"/>
@@ -338,7 +408,8 @@ impl Ocularity {
                     <input type="image" src="image.png?bg={}&fg={}"/>
                 </form>
             "#,
-            questionnaire,
+            session.id,
+            session.questionnaire,
             which,
             win.0, win.1,
             lose.0, lose.1,
@@ -347,8 +418,8 @@ impl Ocularity {
     }
 
     /// Returns a question comparing two images.
-    pub fn question(params: Params) -> Result<HttpOkay, HttpError> {
-        let questionnaire = params.get("q")?;
+    pub fn question(params: &Params) -> Result<HttpOkay, HttpError> {
+        let session = Session::from_params(params)?;
         let pair1 = Self::random_colour_pair();
         let pair2 = Self::random_colour_pair();
         Ok(HttpOkay::Html(format!(
@@ -372,49 +443,35 @@ impl Ocularity {
                     </body>
                 </html>
             "#,
-            Self::form_element(questionnaire, 1, pair1, pair2),
-            Self::form_element(questionnaire, 2, pair2, pair1),
+            Self::form_element(&session, 1, pair1, pair2),
+            Self::form_element(&session, 2, pair2, pair1),
         )))
     }
 
     /// Start the experiment.
-    pub fn start(&self, params: Params) -> Result<HttpOkay, HttpError> {
-        let questionnaire = format!(
-            "{}{}{}{}{}{}{}{}{}{}{}{}",
-            params.get("age")?,
-            params.get("sex")?,
-            params.get("eye_colour")?,
-            params.get("cvd")?,
-            params.get("eyewear")?,
-            params.get("surgery")?,
-            params.get("where")?,
-            params.get("light")?,
-            params.get("company")?,
-            params.get("device")?,
-            params.get("screen")?,
-            params.get("monochrome")?,
-        );
-        Ok(HttpOkay::Redirect(format!("question?q={}", questionnaire)))
+    pub fn start(&self, params: &Params) -> Result<HttpOkay, HttpError> {
+        let session = Session::start(params)?;
+        Ok(HttpOkay::Redirect(format!("question?{}", session.to_params())))
     }
 
     /// Log the answer to a `question()`.
-    pub fn submit(&self, remote_addr: &std::net::SocketAddr, params: Params) -> Result<HttpOkay, HttpError> {
-        let questionnaire = params.get("q")?;
-        let which = params.get("which")?.parse::<u8>()?;
+    pub fn submit(&self, params: &Params) -> Result<HttpOkay, HttpError> {
+        let session = Session::from_params(params)?;
+        let which: u8 = params.get("which")?;
         let is_first = which == 1;
-        let win1 = params.get_colour("win1")?;
-        let win2 = params.get_colour("win2")?;
-        let lose1 = params.get_colour("lose1")?;
-        let lose2 = params.get_colour("lose2")?;
+        let win1: Colour = params.get("win1")?;
+        let win2: Colour = params.get("win2")?;
+        let lose1: Colour = params.get("lose1")?;
+        let lose2: Colour = params.get("lose2")?;
         writeln!(&self.results, "{}, {}, {}, {}, {}, {}, {}, {}",
-            remote_addr.ip(),
+            session.id,
             chrono::Utc::now(),
-            questionnaire,
+            session.questionnaire,
             is_first,
             win1, win2,
             lose1, lose2,
         )?;
-        Ok(HttpOkay::Redirect(format!("question?q={}", questionnaire)))
+        Ok(HttpOkay::Redirect(format!("question?{}", session.to_params())))
     }
 }
 
