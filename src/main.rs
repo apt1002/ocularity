@@ -51,6 +51,18 @@ impl_from_for_error!(png::DecodingError);
 
 // ----------------------------------------------------------------------------
 
+/// An sRGB colour.
+#[derive(Debug, Copy, Clone)]
+struct Colour(u8, u8, u8);
+
+impl std::fmt::Display for Colour {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},{},{}", self.0, self.1, self.2)
+    }
+}
+
+// ----------------------------------------------------------------------------
+
 /// Represent HTTP request parameters.
 #[derive(Debug)]
 pub struct Params(HashMap<String, String>);
@@ -59,17 +71,14 @@ impl Params {
     fn get(&self, key: &str) -> Result<&String, HttpError> {
         self.0.get(key).ok_or(HttpError::Invalid)
     }
-}
 
-// ----------------------------------------------------------------------------
-
-/// An sRGB colour.
-#[derive(Debug, Copy, Clone)]
-struct Colour(u8, u8, u8);
-
-impl std::fmt::Display for Colour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{},{},{}", self.0, self.1, self.2)
+    fn get_colour(&self, key: &str) -> Result<Colour, HttpError> {
+        let mut input = self.get(key)?.split(',');
+        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
+        Ok(Colour(r, g, b))
     }
 }
 
@@ -257,23 +266,13 @@ impl Ocularity {
         }
     }
 
-    /// Parses a URL parameter representing an RGB colour.
-    fn parse_colour(input: &str) -> Result<Colour, HttpError> {
-        let mut input = input.split(',');
-        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
-        Ok(Colour(r, g, b))
-    }
-
     /// The test pattern (black-and-white version).
     const TEST_PATTERN: &[u8] = include_bytes!("test-pattern-grey.png");
 
     /// Serve an image file.
     pub fn image(params: Params) -> Result<HttpOkay, HttpError> {
-        let bg = Self::parse_colour(params.get("bg")?)?;
-        let fg = Self::parse_colour(params.get("fg")?)?;
+        let bg = params.get_colour("bg")?;
+        let fg = params.get_colour("fg")?;
 
         // Construct the palette.
         let mut palette = Vec::new();
@@ -395,10 +394,10 @@ impl Ocularity {
         let questionnaire = params.get("q")?;
         let which = params.get("which")?.parse::<u8>()?;
         let is_first = which == 1;
-        let win1 = Self::parse_colour(params.get("win1")?)?;
-        let win2 = Self::parse_colour(params.get("win2")?)?;
-        let lose1 = Self::parse_colour(params.get("lose1")?)?;
-        let lose2 = Self::parse_colour(params.get("lose2")?)?;
+        let win1 = params.get_colour("win1")?;
+        let win2 = params.get_colour("win2")?;
+        let lose1 = params.get_colour("lose1")?;
+        let lose2 = params.get_colour("lose2")?;
         writeln!(&self.results, "{}, {}, {}, {}, {}, {}, {}, {}",
             remote_addr.ip(),
             chrono::Utc::now(),
