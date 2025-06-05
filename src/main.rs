@@ -51,39 +51,6 @@ impl_from_for_error!(png::DecodingError);
 
 // ----------------------------------------------------------------------------
 
-/// An sRGB colour.
-#[derive(Debug, Copy, Clone)]
-struct Colour(u8, u8, u8);
-
-impl std::fmt::Display for Colour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{},{},{}", self.0, self.1, self.2)
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-/// Represent HTTP request parameters.
-#[derive(Debug)]
-pub struct Params(HashMap<String, String>);
-
-impl Params {
-    fn get(&self, key: &str) -> Result<&String, HttpError> {
-        self.0.get(key).ok_or(HttpError::Invalid)
-    }
-
-    fn get_colour(&self, key: &str) -> Result<Colour, HttpError> {
-        let mut input = self.get(key)?.split(',');
-        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
-        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
-        Ok(Colour(r, g, b))
-    }
-}
-
-// ----------------------------------------------------------------------------
-
 #[derive(Debug, Copy, Clone)]
 struct Delta(i8, i8, i8);
 
@@ -114,33 +81,17 @@ fn random_delta() -> Delta {
 
 // ----------------------------------------------------------------------------
 
+/// An sRGB colour.
 #[derive(Debug, Copy, Clone)]
-struct Centre(u8, u8, u8);
+struct Colour(u8, u8, u8);
 
-const CENTRES: [Centre; 35] = [
-    Centre( 25,  25,  25), Centre(127,  25,  25), Centre(229,  25,  25),
-    Centre( 25, 127,  25), Centre(127, 127,  25), Centre(229, 127,  25),
-    Centre( 25, 229,  25), Centre(127, 229,  25), Centre(229, 229,  25),
+impl std::fmt::Display for Colour {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},{},{}", self.0, self.1, self.2)
+    }
+}
 
-    Centre( 25,  25, 127), Centre(127,  25, 127), Centre(229,  25, 127),
-    Centre( 25, 127, 127), Centre(127, 127, 127), Centre(229, 127, 127),
-    Centre( 25, 229, 127), Centre(127, 229, 127), Centre(229, 229, 127),
-
-    Centre( 25,  25, 229), Centre(127,  25, 229), Centre(229,  25, 229),
-    Centre( 25, 127, 229), Centre(127, 127, 229), Centre(229, 127, 229),
-    Centre( 25, 229, 229), Centre(127, 229, 229), Centre(229, 229, 229),
-
-    Centre( 76,  76,  76), Centre(178,  76,  76),
-    Centre( 76, 178,  76), Centre(178, 178,  76),
-
-    Centre( 76,  76, 178), Centre(178,  76, 178),
-    Centre( 76, 178, 178), Centre(178, 178, 178),
-];
-
-/// Return a random element of `CENTRES`.
-fn random_centre() -> Centre { CENTRES[rand::random_range(0..CENTRES.len())] }
-
-impl std::ops::Add<Delta> for Centre {
+impl std::ops::Add<Delta> for Colour {
     type Output = Colour;
 
     fn add(self, rhs: Delta) -> Self::Output {
@@ -152,10 +103,54 @@ impl std::ops::Add<Delta> for Centre {
     }
 }
 
-impl std::ops::Sub<Delta> for Centre {
+impl std::ops::Sub<Delta> for Colour {
     type Output = Colour;
 
     fn sub(self, rhs: Delta) -> Self::Output { self + -rhs }
+}
+
+const CENTRES: [Colour; 35] = [
+    Colour( 25,  25,  25), Colour(127,  25,  25), Colour(229,  25,  25),
+    Colour( 25, 127,  25), Colour(127, 127,  25), Colour(229, 127,  25),
+    Colour( 25, 229,  25), Colour(127, 229,  25), Colour(229, 229,  25),
+
+    Colour( 25,  25, 127), Colour(127,  25, 127), Colour(229,  25, 127),
+    Colour( 25, 127, 127), Colour(127, 127, 127), Colour(229, 127, 127),
+    Colour( 25, 229, 127), Colour(127, 229, 127), Colour(229, 229, 127),
+
+    Colour( 25,  25, 229), Colour(127,  25, 229), Colour(229,  25, 229),
+    Colour( 25, 127, 229), Colour(127, 127, 229), Colour(229, 127, 229),
+    Colour( 25, 229, 229), Colour(127, 229, 229), Colour(229, 229, 229),
+
+    Colour( 76,  76,  76), Colour(178,  76,  76),
+    Colour( 76, 178,  76), Colour(178, 178,  76),
+
+    Colour( 76,  76, 178), Colour(178,  76, 178),
+    Colour( 76, 178, 178), Colour(178, 178, 178),
+];
+
+/// Return a random element of `CENTRES`.
+fn random_centre() -> Colour { CENTRES[rand::random_range(0..CENTRES.len())] }
+
+// ----------------------------------------------------------------------------
+
+/// Represent HTTP request parameters.
+#[derive(Debug)]
+pub struct Params(HashMap<String, String>);
+
+impl Params {
+    fn get(&self, key: &str) -> Result<&String, HttpError> {
+        self.0.get(key).ok_or(HttpError::Invalid)
+    }
+
+    fn get_colour(&self, key: &str) -> Result<Colour, HttpError> {
+        let mut input = self.get(key)?.split(',');
+        let r = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let g = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        let b = input.next().ok_or(HttpError::Invalid)?.parse::<u8>()?;
+        if let Some(_) = input.next() { Err(HttpError::Invalid)? }
+        Ok(Colour(r, g, b))
+    }
 }
 
 // ----------------------------------------------------------------------------
