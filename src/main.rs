@@ -52,26 +52,26 @@ impl_from_for_error!(png::DecodingError);
 // ----------------------------------------------------------------------------
 
 #[derive(Debug, Copy, Clone)]
-struct Delta(i8, i8, i8);
+struct Delta(f32, f32, f32);
 
 const DELTAS: [Delta; 6] = [
-    Delta(2, 2, -3), Delta(5, -5, 0),
-    Delta(2, -3, 2), Delta(5, 0, -5),
-    Delta(-3, 2, 2), Delta(0, 5, -5),
+    Delta(2., 2., -3.), Delta(5., -5., 0.),
+    Delta(2., -3., 2.), Delta(5., 0., -5.),
+    Delta(-3., 2., 2.), Delta(0., 5., -5.),
 ];
 
-const SCALES: [i8; 10] = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5];
+const SCALES: [f32; 10] = [-5., -4., -3., -2., -1., 1., 2., 3., 4., 5.];
 
-impl std::ops::Mul<i8> for Delta {
+impl std::ops::Mul<f32> for Delta {
     type Output = Self;
 
-    fn mul(self, rhs: i8) -> Self::Output { Self(self.0 * rhs, self.1 * rhs, self.2 * rhs) }
+    fn mul(self, rhs: f32) -> Self::Output { Self(self.0 * rhs, self.1 * rhs, self.2 * rhs) }
 }
 
 impl std::ops::Neg for Delta {
     type Output = Self;
 
-    fn neg(self) -> Self::Output { self * -1 }
+    fn neg(self) -> Self::Output { self * -1.0 }
 }
 
 /// Return a random element of `DELTAS`.
@@ -96,9 +96,21 @@ impl std::ops::Add<Delta> for Colour {
 
     fn add(self, rhs: Delta) -> Self::Output {
         Colour(
-            ((self.0 as i32) + (rhs.0 as i32)) as u8,
-            ((self.1 as i32) + (rhs.1 as i32)) as u8,
-            ((self.2 as i32) + (rhs.2 as i32)) as u8,
+            ((self.0 as f32) + rhs.0).round() as u8,
+            ((self.1 as f32) + rhs.1).round() as u8,
+            ((self.2 as f32) + rhs.2).round() as u8,
+        )
+    }
+}
+
+impl std::ops::Sub<Colour> for Colour {
+    type Output = Delta;
+
+    fn sub(self, rhs: Colour) -> Self::Output {
+        Delta (
+            (self.0 as f32) - (rhs.0 as f32),
+            (self.1 as f32) - (rhs.1 as f32),
+            (self.2 as f32) - (rhs.2 as f32),
         )
     }
 }
@@ -273,9 +285,10 @@ impl Ocularity {
         let mut palette = Vec::new();
         for i in 0..256 {
             let f = (i as f32) / 255.0;
-            palette.push(((bg.0 as f32) + f * ((fg.0 as f32) - (bg.0 as f32))) as u8);
-            palette.push(((bg.1 as f32) + f * ((fg.1 as f32) - (bg.1 as f32))) as u8);
-            palette.push(((bg.2 as f32) + f * ((fg.2 as f32) - (bg.2 as f32))) as u8);
+            let mix = bg + (fg - bg) * f;
+            palette.push(mix.0);
+            palette.push(mix.1);
+            palette.push(mix.2);
         }
 
         // Read the input image.
